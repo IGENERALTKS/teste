@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D20 Theoros</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #0a0a0a;
+            overflow: hidden;
+            font-family: serif;
+        }
+        #canvas-wrap { cursor: pointer; }
+        #result {
+            margin-top: 28px;
+            font-size: 72px;
+            font-weight: bold;
+            color: #ffd700;
+            text-shadow: 0 0 18px #ff4400, 0 0 40px #ff2200;
+            letter-spacing: 4px;
+            min-height: 88px;
+            text-align: center;
+        }
+        #label {
+            font-size: 13px;
+            color: rgba(255,160,0,0.5);
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            text-align: center;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+<div id="canvas-wrap"></div>
+<div id="result">—</div>
+<div id="label">clique no dado para rolar</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    /* ── Renderer ── */
+    const W = Math.min(innerWidth, 480);
+    const H = Math.min(innerHeight * 0.6, 380);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(W, H);
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setClearColor(0x000000, 0);
+    document.getElementById('canvas-wrap').appendChild(renderer.domElement);
+
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, W / H, 0.1, 100);
+    camera.position.z = 4.5;
+
+    /* ── Luzes ── */
+    scene.add(new THREE.AmbientLight(0x2a1200, 1.0));
+    const goldLight = new THREE.PointLight(0xffaa22, 2.4, 12);
+    goldLight.position.set(2, 2, 4);
+    scene.add(goldLight);
+    const redLight = new THREE.PointLight(0xff1100, 3.0, 10);
+    redLight.position.set(-1, -3, 2);
+    scene.add(redLight);
+    const rimLight = new THREE.PointLight(0xff4400, 1.2, 8);
+    rimLight.position.set(-3, 1, -3);
+    scene.add(rimLight);
+
+    /* ── Runas ── */
+    const RUNES = ['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ','ᚷ','ᚹ','ᚺ','ᚾ','ᛁ','ᛃ','ᛇ','ᛈ','ᛉ','ᛊ','ᛏ','ᛒ','ᛖ','ᛗ'];
+
+    /* ── Textura por face ── */
+    function faceTexture(num) {
+        const S = 512;
+        const cv = document.createElement('canvas');
+        cv.width = cv.height = S;
+        const ctx = cv.getContext('2d');
+        const cx = S/2, topY = S*0.04, lx = S*0.03, rx = S*0.97, by = S*0.96;
+
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, S, S);
+
+        // Triângulo preenchido
+        ctx.beginPath();
+        ctx.moveTo(cx, topY); ctx.lineTo(lx, by); ctx.lineTo(rx, by);
+        ctx.closePath();
+        const g = ctx.createRadialGradient(cx, S*0.55, S*0.05, cx, S*0.55, S*0.52);
+        g.addColorStop(0, '#7a0000'); g.addColorStop(0.4, '#4a0000'); g.addColorStop(1, '#1a0000');
+        ctx.fillStyle = g; ctx.fill();
+
+        // Rachaduras
+        ctx.save(); ctx.clip();
+        ctx.strokeStyle = 'rgba(255,60,0,0.12)'; ctx.lineWidth = 0.8;
+        for (let a = 0; a < Math.PI*2; a += Math.PI/9) {
+            ctx.beginPath(); ctx.moveTo(cx, S*0.58);
+            ctx.lineTo(cx + Math.cos(a)*S*0.55, S*0.58 + Math.sin(a)*S*0.55);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Borda dourada
+        ctx.beginPath();
+        ctx.moveTo(cx, topY); ctx.lineTo(lx, by); ctx.lineTo(rx, by);
+        ctx.closePath();
+        const gg = ctx.createLinearGradient(lx, by, rx, topY);
+        gg.addColorStop(0,'#8b6914'); gg.addColorStop(0.3,'#ffd700');
+        gg.addColorStop(0.5,'#fff5a0'); gg.addColorStop(0.7,'#ffd700'); gg.addColorStop(1,'#8b6914');
+        ctx.strokeStyle = gg; ctx.lineWidth = num===20 ? 9 : 7; ctx.lineJoin = 'round'; ctx.stroke();
+        ctx.strokeStyle = 'rgba(255,200,0,0.18)'; ctx.lineWidth = 18; ctx.stroke();
+
+        // Runa
+        if (num !== 20) {
+            ctx.fillStyle = 'rgba(255,160,0,0.55)';
+            ctx.font = 'bold 38px serif';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(RUNES[(num-1)%20], cx, S*0.78);
+        }
+
+        // Número
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        if (num === 20) {
+            ctx.font = 'bold 130px serif';
+            ctx.shadowColor = '#ff4400'; ctx.shadowBlur = 40;
+            ctx.fillStyle = '#ff2200'; ctx.fillText('20', cx, S*0.58);
+            ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 20;
+            ctx.fillStyle = '#ffd700'; ctx.fillText('20', cx, S*0.58);
+            ctx.shadowBlur = 0;
+            ctx.strokeStyle = '#fff5a0'; ctx.lineWidth = 2; ctx.strokeText('20', cx, S*0.58);
+        } else {
+            ctx.font = `bold ${num>=10?100:110}px serif`;
+            ctx.shadowColor = '#ff3300'; ctx.shadowBlur = 30;
+            ctx.fillStyle = '#cc1100'; ctx.fillText(String(num), cx, S*0.58);
+            ctx.shadowColor = '#ffaa00'; ctx.shadowBlur = 12;
+            ctx.fillStyle = '#ffcc44'; ctx.fillText(String(num), cx, S*0.58);
+            ctx.shadowBlur = 0;
+        }
+        return new THREE.CanvasTexture(cv);
+    }
+
+    /* ── Geometria ── */
+    const icoGeo = new THREE.IcosahedronGeometry(1, 0);
+    const pos    = icoGeo.attributes.position;
+    const group  = new THREE.Group();
+    scene.add(group);
+
+    const faceNormals = [];
+
+    for (let f = 0; f < 20; f++) {
+        const i0 = f * 3;
+        const vA = new THREE.Vector3(pos.getX(i0),   pos.getY(i0),   pos.getZ(i0));
+        const vB = new THREE.Vector3(pos.getX(i0+1), pos.getY(i0+1), pos.getZ(i0+1));
+        const vC = new THREE.Vector3(pos.getX(i0+2), pos.getY(i0+2), pos.getZ(i0+2));
+
+        faceNormals.push(vA.clone().add(vB).add(vC).divideScalar(3).normalize());
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute([
+            vA.x,vA.y,vA.z, vB.x,vB.y,vB.z, vC.x,vC.y,vC.z
+        ], 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute([
+            0.5,0.96, 0.03,0.04, 0.97,0.04
+        ], 2));
+        geo.computeVertexNormals();
+
+        group.add(new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
+            map: faceTexture(f+1),
+            shininess: 120,
+            emissive: new THREE.Color(0x1a0000),
+            emissiveIntensity: 0.35,
+        })));
+    }
+
+    group.add(new THREE.LineSegments(
+        new THREE.EdgesGeometry(icoGeo),
+        new THREE.LineBasicMaterial({ color: 0xffcc00, transparent: true, opacity: 0.85 })
+    ));
+
+    /* ── Partículas ── */
+    const N = 100;
+    const eArr = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+        eArr[i*3]   = (Math.random()-0.5)*6;
+        eArr[i*3+1] = (Math.random()-0.5)*6;
+        eArr[i*3+2] = (Math.random()-0.5)*4;
+    }
+    const emberGeo = new THREE.BufferGeometry();
+    emberGeo.setAttribute('position', new THREE.BufferAttribute(eArr, 3));
+    const embers = new THREE.Points(emberGeo,
+        new THREE.PointsMaterial({ color:0xff6600, size:0.025, transparent:true, opacity:0.6 }));
+    scene.add(embers);
+
+    /* ── Face frontal ── */
+    const camDir = new THREE.Vector3(0, 0, 1);
+    const rotMat = new THREE.Matrix4();
+
+    function getFrontFace() {
+        rotMat.makeRotationFromEuler(group.rotation);
+        let best = -Infinity, bestIdx = 0;
+        for (let f = 0; f < 20; f++) {
+            const dot = faceNormals[f].clone().applyMatrix4(rotMat).dot(camDir);
+            if (dot > best) { best = dot; bestIdx = f; }
+        }
+        return bestIdx + 1;
+    }
+
+    /* ── Rolagem ── */
+    const resultEl = document.getElementById('result');
+    const labelEl  = document.getElementById('label');
+
+    let rolling  = false;
+    let frame    = 0;
+    let totalFrames = 0;
+    let vX = 0, vY = 0;
+    let spinVX = 0, spinVY = 0;
+    let t = 0;
+
+    function roll() {
+        if (rolling) return;
+        rolling     = true;
+        totalFrames = Math.floor(120 + Math.random() * 80); // ~2-3s a 60fps
+        frame       = 0;
+        spinVX      = (Math.random()-0.5) * 0.25;
+        spinVY      = 0.16 + Math.random() * 0.12;
+        resultEl.textContent = '—';
+        resultEl.style.opacity = '0.3';
+        labelEl.textContent = 'rolando...';
+    }
+
+    renderer.domElement.addEventListener('click', roll);
+
+    /* ── Loop ── */
+    function animate() {
+        requestAnimationFrame(animate);
+        t += 0.01;
+
+        if (rolling) {
+            frame++;
+            const progress = frame / totalFrames;        // 0 → 1
+            const ease     = 1 - progress * progress;    // desacelera
+
+            vX = spinVX * ease;
+            vY = spinVY * ease;
+
+            if (frame >= totalFrames) {
+                rolling = false;
+                vX = 0; vY = 0;
+                const num = getFrontFace();
+                resultEl.textContent   = String(num);
+                resultEl.style.opacity = '1';
+                labelEl.textContent    = num === 20 ? '⚔ crítico! ⚔' : num === 1 ? 'falha crítica' : 'clique para rolar novamente';
+            }
+        }
+
+        group.rotation.x += vX;
+        group.rotation.y += vY;
+
+        // Embers
+        const ep = embers.geometry.attributes.position;
+        for (let i = 0; i < N; i++) {
+            ep.array[i*3+1] += 0.004;
+            ep.array[i*3]   += Math.sin(t + i) * 0.001;
+            if (ep.array[i*3+1] > 3) ep.array[i*3+1] = -3;
+        }
+        ep.needsUpdate = true;
+
+        renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+        const nW = Math.min(innerWidth, 480);
+        const nH = Math.min(innerHeight * 0.6, 380);
+        camera.aspect = nW / nH;
+        camera.updateProjectionMatrix();
+        renderer.setSize(nW, nH);
+    });
+</script>
+</body>
+</html>
