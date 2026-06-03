@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>D20 Theoros</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background-color: #0a0a0a;
+            overflow: hidden;
+        }
+        canvas { display: block; cursor: pointer; }
+    </style>
+</head>
+<body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+    /* ── Renderer ── */
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.setPixelRatio(devicePixelRatio);
+    renderer.setClearColor(0x0a0a0a);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 100);
+    camera.position.z = 4.5;
+
+    /* ── Fog atmosférico ── */
+    scene.fog = new THREE.FogExp2(0x0a0a0a, 0.18);
+
+    /* ── Luzes ── */
+    scene.add(new THREE.AmbientLight(0x1a0a00, 1.2));
+
+    // Luz dourada frontal
+    const goldLight = new THREE.PointLight(0xffaa22, 3.5, 12);
+    goldLight.position.set(2, 2, 4);
+    scene.add(goldLight);
+
+    // Luz vermelha de baixo
+    const redLight = new THREE.PointLight(0xff1100, 4.0, 10);
+    redLight.position.set(-1, -3, 2);
+    scene.add(redLight);
+
+    // Luz traseira fria
+    const rimLight = new THREE.PointLight(0xff4400, 1.5, 8);
+    rimLight.position.set(-3, 1, -3);
+    scene.add(rimLight);
+
+    /* ── Runas para decorar as faces ── */
+    const RUNES = ['ᚠ','ᚢ','ᚦ','ᚨ','ᚱ','ᚲ','ᚷ','ᚹ','ᚺ','ᚾ','ᛁ','ᛃ','ᛇ','ᛈ','ᛉ','ᛊ','ᛏ','ᛒ','ᛖ','ᛗ'];
+
+    /* ── Textura de cada face ── */
+    function faceTexture(num) {
+        const S = 512;
+        const c = document.createElement('canvas');
+        c.width = c.height = S;
+        const ctx = c.getContext('2d');
+
+        // Fundo preto
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, S, S);
+
+        // Triângulo base — gradiente vermelho profundo
+        const cx = S / 2, topY = S * 0.04, botY = S * 0.96;
+        const leftX  = S * 0.03, rightX = S * 0.97;
+        const midBotY = botY;
+
+        ctx.beginPath();
+        ctx.moveTo(cx,     topY);
+        ctx.lineTo(leftX,  midBotY);
+        ctx.lineTo(rightX, midBotY);
+        ctx.closePath();
+
+        const grad = ctx.createRadialGradient(cx, S*0.55, S*0.05, cx, S*0.55, S*0.52);
+        grad.addColorStop(0,   '#7a0000');
+        grad.addColorStop(0.4, '#4a0000');
+        grad.addColorStop(1,   '#1a0000');
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // Textura de crack interno (linhas finas irradiando do centro)
+        ctx.save();
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(255,60,0,0.12)';
+        ctx.lineWidth = 0.8;
+        for (let a = 0; a < Math.PI * 2; a += Math.PI / 9) {
+            ctx.beginPath();
+            ctx.moveTo(cx, S * 0.58);
+            ctx.lineTo(cx + Math.cos(a) * S * 0.55, S * 0.58 + Math.sin(a) * S * 0.55);
+            ctx.stroke();
+        }
+        ctx.restore();
+
+        // Borda dourada brilhante
+        ctx.beginPath();
+        ctx.moveTo(cx,     topY);
+        ctx.lineTo(leftX,  midBotY);
+        ctx.lineTo(rightX, midBotY);
+        ctx.closePath();
+        const goldGrad = ctx.createLinearGradient(leftX, midBotY, rightX, topY);
+        goldGrad.addColorStop(0,   '#8b6914');
+        goldGrad.addColorStop(0.3, '#ffd700');
+        goldGrad.addColorStop(0.5, '#fff5a0');
+        goldGrad.addColorStop(0.7, '#ffd700');
+        goldGrad.addColorStop(1,   '#8b6914');
+        ctx.strokeStyle = goldGrad;
+        ctx.lineWidth = num === 20 ? 9 : 7;
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+
+        // Glow dourado na borda
+        ctx.beginPath();
+        ctx.moveTo(cx,     topY);
+        ctx.lineTo(leftX,  midBotY);
+        ctx.lineTo(rightX, midBotY);
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(255,200,0,0.18)';
+        ctx.lineWidth = 18;
+        ctx.stroke();
+
+        // Runa pequena no canto (faces não-20)
+        if (num !== 20) {
+            const rune = RUNES[(num - 1) % RUNES.length];
+            ctx.fillStyle = 'rgba(255,160,0,0.55)';
+            ctx.font = 'bold 38px serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(rune, cx, S * 0.78);
+        }
+
+        // Número principal
+        const isTwenty = num === 20;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+
+        if (isTwenty) {
+            // Número 20 com glow especial
+            ctx.font = 'bold 130px serif';
+            ctx.shadowColor = '#ff4400';
+            ctx.shadowBlur = 40;
+            ctx.fillStyle = '#ff2200';
+            ctx.fillText('20', cx, S * 0.58);
+            ctx.shadowColor = '#ffaa00';
+            ctx.shadowBlur = 20;
+            ctx.fillStyle = '#ffd700';
+            ctx.fillText('20', cx, S * 0.58);
+            ctx.shadowBlur = 0;
+            // Contorno dourado
+            ctx.strokeStyle = '#fff5a0';
+            ctx.lineWidth = 2;
+            ctx.strokeText('20', cx, S * 0.58);
+        } else {
+            ctx.font = `bold ${num >= 10 ? 100 : 110}px serif`;
+            ctx.shadowColor = '#ff3300';
+            ctx.shadowBlur = 30;
+            ctx.fillStyle = '#cc1100';
+            ctx.fillText(String(num), cx, S * 0.58);
+            ctx.shadowColor = '#ffaa00';
+            ctx.shadowBlur = 12;
+            ctx.fillStyle = '#ffcc44';
+            ctx.fillText(String(num), cx, S * 0.58);
+            ctx.shadowBlur = 0;
+        }
+
+        return new THREE.CanvasTexture(c);
+    }
+
+    /* ── Geometria ── */
+    const icoGeo = new THREE.IcosahedronGeometry(1, 0);
+    const pos    = icoGeo.attributes.position;
+
+    const group = new THREE.Group();
+    scene.add(group);
+
+    for (let f = 0; f < 20; f++) {
+        const i0 = f * 3;
+        const vA = new THREE.Vector3(pos.getX(i0),   pos.getY(i0),   pos.getZ(i0));
+        const vB = new THREE.Vector3(pos.getX(i0+1), pos.getY(i0+1), pos.getZ(i0+1));
+        const vC = new THREE.Vector3(pos.getX(i0+2), pos.getY(i0+2), pos.getZ(i0+2));
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute([
+            vA.x, vA.y, vA.z,
+            vB.x, vB.y, vB.z,
+            vC.x, vC.y, vC.z,
+        ], 3));
+        geo.setAttribute('uv', new THREE.Float32BufferAttribute([
+            0.5,  0.96,
+            0.03, 0.04,
+            0.97, 0.04,
+        ], 2));
+        geo.computeVertexNormals();
+
+        const mat = new THREE.MeshPhongMaterial({
+            map:        faceTexture(f + 1),
+            shininess:  120,
+            specular:   new THREE.Color(0xffaa00),
+            emissive:   new THREE.Color(0x1a0000),
+            emissiveIntensity: 0.4,
+        });
+
+        group.add(new THREE.Mesh(geo, mat));
+    }
+
+    /* ── Arestas douradas ── */
+    const edgesGeo = new THREE.EdgesGeometry(icoGeo);
+    const edgesMat = new THREE.LineBasicMaterial({
+        color: 0xffcc00,
+        transparent: true,
+        opacity: 0.85,
+    });
+    group.add(new THREE.LineSegments(edgesGeo, edgesMat));
+
+    /* ── Partículas de embers ── */
+    const emberCount = 120;
+    const emberPositions = new Float32Array(emberCount * 3);
+    for (let i = 0; i < emberCount; i++) {
+        emberPositions[i*3]   = (Math.random()-0.5) * 6;
+        emberPositions[i*3+1] = (Math.random()-0.5) * 6;
+        emberPositions[i*3+2] = (Math.random()-0.5) * 4;
+    }
+    const emberGeo = new THREE.BufferGeometry();
+    emberGeo.setAttribute('position', new THREE.BufferAttribute(emberPositions, 3));
+    const emberMat = new THREE.PointsMaterial({ color: 0xff6600, size: 0.025, transparent: true, opacity: 0.7 });
+    const embers = new THREE.Points(emberGeo, emberMat);
+    scene.add(embers);
+
+    /* ── Rotação ── */
+    let vX = 0.003, vY = 0.007;
+    let targetVX = vX, targetVY = vY;
+
+    renderer.domElement.addEventListener('mouseenter', () => { targetVX = 0.012; targetVY = 0.022; });
+    renderer.domElement.addEventListener('mouseleave', () => { targetVX = 0.003; targetVY = 0.007; });
+    renderer.domElement.addEventListener('click', () => {
+        targetVX = (Math.random()-0.5) * 0.22;
+        targetVY = (Math.random()-0.5) * 0.22;
+        setTimeout(() => { targetVX = 0.003; targetVY = 0.007; }, 2500);
+    });
+
+    window.addEventListener('resize', () => {
+        camera.aspect = innerWidth / innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(innerWidth, innerHeight);
+    });
+
+    let t = 0;
+    (function animate() {
+        requestAnimationFrame(animate);
+        t += 0.01;
+
+        // Suaviza velocidade
+        vX += (targetVX - vX) * 0.08;
+        vY += (targetVY - vY) * 0.08;
+
+        group.rotation.x += vX;
+        group.rotation.y += vY;
+
+        // Pulso nas luzes
+       // goldLight.intensity = 3.5 + Math.sin(t * 1.3) * 0.6;
+        //redLight.intensity  = 4.0 + Math.sin(t * 0.9 + 1) * 0.8;
+
+        // Embers flutuando
+        const ep = embers.geometry.attributes.position;
+        for (let i = 0; i < emberCount; i++) {
+            ep.array[i*3+1] += 0.004;
+            ep.array[i*3]   += Math.sin(t + i) * 0.001;
+            if (ep.array[i*3+1] > 3) ep.array[i*3+1] = -3;
+        }
+        ep.needsUpdate = true;
+
+        renderer.render(scene, camera);
+    })();
+</script>
+</body>
+</html>
